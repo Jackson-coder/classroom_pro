@@ -37,6 +37,12 @@ pip install -r requirements.txt  # install dependencies
 link：https://pan.baidu.com/s/14WMopYlf4pdOTpNcgLfKPg?pwd=0000 
 
 password：0000 
+
+### Get weights directory via the following link and put it in the root directory.
+
+link：https://pan.baidu.com/s/1dOUVbwSg2rg_pWzd5Emrfg?pwd=0000 
+password：0000 
+
 </details>
 
 <details>
