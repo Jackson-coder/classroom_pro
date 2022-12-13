@@ -36,11 +36,12 @@ class StrongSORT(object):
         self.tracker = Tracker(
             metric, max_iou_distance=max_iou_distance, max_age=max_age, n_init=n_init)
 
-    def update(self, dets,  ori_img):
+    def update(self, dets, ori_img, single_cls=False):
         
         xyxys = dets[:, 0:4]
         confs = dets[:, 4]
-        clss = dets[:, 5]
+        action_cls = dets[:, 5] if single_cls == True else None
+        clss = dets[:, 5] if single_cls == False else torch.Tensor([0] * len(dets[:, 5]))
         
         classes = clss.numpy()
         xywhs = xyxy2xywh(xyxys.numpy())
@@ -59,7 +60,7 @@ class StrongSORT(object):
 
         # update tracker
         self.tracker.predict()
-        self.tracker.update(detections, clss, confs)
+        self.tracker.update(detections, clss, confs, action_cls)
 
         # output bbox identities
         outputs = []
@@ -71,9 +72,13 @@ class StrongSORT(object):
             x1, y1, x2, y2 = self._tlwh_to_xyxy(box)
             
             track_id = track.track_id
-            class_id = track.class_id
+            class_id = track.class_id 
             conf = track.conf
-            outputs.append(np.array([x1, y1, x2, y2, track_id, class_id, conf]))
+            action_cls = track.action_cls
+            if single_cls == True:
+                outputs.append(np.array([x1, y1, x2, y2, track_id, class_id, conf, action_cls]))
+            else:
+                outputs.append(np.array([x1, y1, x2, y2, track_id, class_id, conf]))
         if len(outputs) > 0:
             outputs = np.stack(outputs, axis=0)
         return outputs

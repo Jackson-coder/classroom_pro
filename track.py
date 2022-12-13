@@ -30,11 +30,27 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 import logging
 from yolov5.models.common import DetectMultiBackend
 from yolov5.utils.dataloaders import VID_FORMATS, LoadImages, LoadStreams
-from yolov5.utils.general import (LOGGER, check_img_size, non_max_suppression, scale_coords, check_requirements, cv2,
+from yolov5.utils.general import (LOGGER, check_img_size, non_max_suppression, scale_boxes, check_requirements, cv2,
                                   check_imshow, xyxy2xywh, increment_path, strip_optimizer, colorstr, print_args, check_file)
 from yolov5.utils.torch_utils import select_device, time_sync
 from yolov5.utils.plots import Annotator, colors, save_one_box
 from trackers.multi_tracker_zoo import create_tracker
+
+from yolov5.warning import warning as Wa
+from PIL import Image, ImageDraw, ImageFont
+
+def cv2AddChineseText(img, text, position, textColor=(0, 255, 0), textSize=30):
+    if (isinstance(img, np.ndarray)):  # 判断是否OpenCV图片类型
+        img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    # 创建一个可以在给定图像上绘图的对象
+    draw = ImageDraw.Draw(img)
+    # 字体的格式
+    fontStyle = ImageFont.truetype(
+        "simsun.ttc", textSize, encoding="utf-8")
+    # 绘制文本
+    draw.text(position, text, textColor, font=fontStyle)
+    # 转换回OpenCV格式
+    return cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
 
 # remove duplicated stream handler to avoid duplicated logging
 logging.getLogger().removeHandler(logging.getLogger().handlers[0])
@@ -70,6 +86,8 @@ def run(
         hide_class=False,  # hide IDs
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
+        person_number=30,
+        filter_box = False
 ):
 
     source = str(source)
@@ -96,6 +114,8 @@ def run(
     model = DetectMultiBackend(yolo_weights, device=device, dnn=dnn, data=None, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
+    
+    warn = Wa()
 
     # Dataloader
     if webcam:
@@ -122,6 +142,11 @@ def run(
     #model.warmup(imgsz=(1 if pt else nr_sources, 3, *imgsz))  # warmup
     dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     curr_frames, prev_frames = [None] * nr_sources, [None] * nr_sources
+    
+    flag = None
+    text = None
+    person_buffer = 0
+    
     for frame_idx, (path, im, im0s, vid_cap, s) in enumerate(dataset):
         t1 = time_sync()
         im = torch.from_numpy(im).to(device)
@@ -176,7 +201,7 @@ def run(
 
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()  # xyxy
+                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
 
                 # Print results
                 for c in det[:, -1].unique():
@@ -185,38 +210,69 @@ def run(
 
                 # pass detections to strongsort
                 t4 = time_sync()
-                outputs[i] = tracker_list[i].update(det.cpu(), im0)
+                outputs[i] = tracker_list[i].update(det.cpu(), im0, single_cls=True)
                 t5 = time_sync()
                 dt[3] += t5 - t4
-
+                
                 # draw boxes for visualization
                 if len(outputs[i]) > 0:
+                    detect_results = np.concatenate([np.array(outputs[i][:,0:5]), np.expand_dims(outputs[i][:,-1], axis=1)],axis=1)
+                    detect_lying, flag, detect_leaving = warn.countAndAction(detect_results)
+                    
+                    person_buffer += flag[1]
+                    
+                    # 缺席
+                    if flag[0] == True:
+                        print('缺席')
+                        flag[1] = person_number if flag[1] > person_number else flag[1]
                     for j, (output, conf) in enumerate(zip(outputs[i], det[:, 4])):
-    
-                        bboxes = output[0:4]
+                        bbox = output[0:4]
                         id = output[4]
-                        cls = output[5]
-
-                        if save_txt:
-                            # to MOT format
-                            bbox_left = output[0]
-                            bbox_top = output[1]
-                            bbox_w = output[2] - output[0]
-                            bbox_h = output[3] - output[1]
-                            # Write MOT compliant results to file
-                            with open(txt_path + '.txt', 'a') as f:
-                                f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                                                               bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
-
-                        if save_vid or save_crop or show_vid:  # Add bbox to image
+                        cls = output[-1]
+                        if (bbox[0] < annotator.im.shape[1]*0.05 or bbox[2] > annotator.im.shape[1]*0.95 or bbox[1] < annotator.im.shape[0]*0.05 or bbox[3] > annotator.im.shape[0]*0.95) and filter_box:
+                            continue
+                        # 躺卧
+                        if (save_vid or save_crop or show_vid) and id in detect_lying:  # Add bbox to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
-                            label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
-                            annotator.box_label(bboxes, label, color=colors(c, True))
-                            if save_crop:
-                                txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
-                                save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                            label = None if hide_labels else (f'lying' if hide_conf else (f'lying: {conf:.2f}' ))
+                            annotator.box_label(bbox, label, color=colors(3*c, True))
+                        # 离席
+                        elif (save_vid or save_crop or show_vid) and id in detect_leaving:  
+                            c = int(cls)  # integer class
+                            id = int(id)  # integer id
+                            label = None if hide_labels else (f'leaving' if hide_conf else (f'leaving: {conf:.2f}' ))
+                            annotator.box_label(bbox, label, color=colors(3*c, True))
+
+               
+                # # draw boxes for visualization
+                # if len(outputs[i]) > 0:
+                #     for j, (output, conf) in enumerate(zip(outputs[i], det[:, 4])):
+    
+                #         bboxes = output[0:4]
+                #         id = output[4]
+                #         cls = output[-1]
+
+                #         if save_txt:
+                #             # to MOT format
+                #             bbox_left = output[0]
+                #             bbox_top = output[1]
+                #             bbox_w = output[2] - output[0]
+                #             bbox_h = output[3] - output[1]
+                #             # Write MOT compliant results to file
+                #             with open(txt_path + '.txt', 'a') as f:
+                #                 f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
+                #                                                bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
+
+                #         if save_vid or save_crop or show_vid:  # Add bbox to image
+                #             c = int(cls)  # integer class
+                #             id = int(id)  # integer id
+                #             label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                #                 (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
+                #             annotator.box_label(bboxes, label, color=colors(c, True))
+                #             if save_crop:
+                #                 txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
+                #                 save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
 
                 LOGGER.info(f'{s}Done. yolo:({t3 - t2:.3f}s), {tracking_method}:({t5 - t4:.3f}s)')
 
@@ -244,6 +300,14 @@ def run(
                         fps, w, h = 30, im0.shape[1], im0.shape[0]
                     save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                     vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                if flag is not None:
+                    if (frame_idx+1) % 15 == 0:
+                        text = "应到人数:" + str(person_number)+" " + "实到人数:"+str(int(person_buffer/15))
+                        person_buffer = 0
+                        # print('update')
+                    if text is not None:
+                        # print(text)
+                        im0 = cv2AddChineseText(im0, text, (40, 50),(0, 255, 0), 30)   
                 vid_writer[i].write(im0)
 
             prev_frames[i] = curr_frames[i]

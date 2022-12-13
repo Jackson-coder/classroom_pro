@@ -67,7 +67,7 @@ class Track:
     """
 
     def __init__(self, detection, track_id, class_id, conf, n_init, max_age, ema_alpha,
-                 feature=None):
+                 feature=None, action_cls=None):
         self.track_id = track_id
         self.class_id = int(class_id)
         self.hits = 1
@@ -82,6 +82,7 @@ class Track:
             self.features.append(feature)
 
         self.conf = conf
+        self.action_cls = action_cls
         self._n_init = n_init
         self._max_age = max_age
 
@@ -253,7 +254,7 @@ class Track:
         self.age += 1
         self.time_since_update += 1
 
-    def update(self, detection, class_id, conf):
+    def update(self, detection, class_id, conf, action_cls=None):
         """Perform Kalman filter measurement update step and update the feature
         cache.
         Parameters
@@ -262,6 +263,7 @@ class Track:
             The associated detection.
         """
         self.conf = conf
+        self.action_cls = action_cls
         self.class_id = class_id.int()
         self.mean, self.covariance = self.kf.update(self.mean, self.covariance, detection.to_xyah(), detection.confidence)
 
