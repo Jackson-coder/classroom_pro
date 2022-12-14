@@ -28,8 +28,8 @@ This repository contains a highly configurable two-stage-tracker that adjusts to
 <summary>Installation</summary>
 
 ```bash
-git clone --recurse-submodules https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet.git  # clone recursively
-cd Yolov5_StrongSORT_OSNet
+git clone --recurse-submodules https://github.com/Jackson-coder/classroom_pro.git  # clone recursively
+cd classroom_pro
 pip install -r requirements.txt  # install dependencies
 ```
 ### Get simsun.zip via the following link and unzip it in the root directory.
