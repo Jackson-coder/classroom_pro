@@ -28,6 +28,9 @@ git clone --recurse-submodules https://github.com/Jackson-coder/classroom_pro.gi
 cd classroom_pro
 pip install -r requirements.txt  # install dependencies
 ```
+
+Tips: Don't forget to pull the latest version of "classroom" repo.
+
 ### Get simsun.zip via the following link and unzip it in the root directory.
 
 link：https://pan.baidu.com/s/14WMopYlf4pdOTpNcgLfKPg?pwd=0000 
