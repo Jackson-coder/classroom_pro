@@ -1,9 +1,5 @@
 # Yolov5 + StrongSORT with OSNet
 
-
-
-
-
 <div align="center">
 <p>
 <img src="trackers/strong_sort/results/output_th025.gif" width="400"/> 
@@ -75,8 +71,3 @@ If you find this project useful in your research, please consider cite:
     year={2022}
 }
 ```
-
-## Contact 
-
-For Yolov5 DeepSort OSNet bugs and feature requests please visit [GitHub Issues](https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/issues). 
-For business inquiries or professional support requests please send an email to: yolov5.deepsort.pytorch@gmail.com
